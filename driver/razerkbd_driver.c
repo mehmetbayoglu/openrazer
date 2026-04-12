@@ -409,7 +409,7 @@ static int razer_send_payload_no_response(struct razer_kbd_device *device, struc
     WARN_ON(request->transaction_id.id == 0x00);
 
     razer_get_report_params(device->usb_dev, &report_index, &response_index, &wait);
-    return razer_send_control_msg(device->usb_dev, request, report_index, wait);
+    return razer_send_control_msg(device->usb_dev, request, sizeof(*request), report_index, wait);
 }
 
 /**

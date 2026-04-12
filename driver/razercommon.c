@@ -17,37 +17,29 @@
  * USUALLY index = 0x02
  * FIREFLY is 0
  */
-int razer_send_control_msg(struct usb_device *usb_dev,void const *data, uint report_index, ulong wait)
+int razer_send_control_msg(struct usb_device *usb_dev, const void *data, u16 size, u16 index, ulong wait)
 {
-    uint request = HID_REQ_SET_REPORT; // 0x09
-    uint request_type = USB_TYPE_CLASS | USB_RECIP_INTERFACE | USB_DIR_OUT; // 0x21
-    uint value = 0x300;
-    uint size = RAZER_USB_REPORT_LEN;
-    char *buf;
-    int len;
-
-    buf = kmemdup(data, size, GFP_KERNEL);
-    if (buf == NULL)
-        return -ENOMEM;
+    int ret;
 
     // Send usb control message
-    len = usb_control_msg(usb_dev, usb_sndctrlpipe(usb_dev, 0),
-                          request,      // Request
-                          request_type, // RequestType
-                          value,        // Value
-                          report_index, // Index
-                          buf,          // Data
-                          size,         // Length
-                          USB_CTRL_SET_TIMEOUT);
+    ret = usb_control_msg_send(usb_dev,
+                               0, // endpoint to send the message to
+                               HID_REQ_SET_REPORT, // USB message request value (0x09)
+                               USB_TYPE_CLASS | USB_RECIP_INTERFACE | USB_DIR_OUT, // USB message request type value (0x21)
+                               0x300, // USB message value
+                               index, // USB message index value
+                               data, // pointer to the data to send
+                               size, // length in bytes of the data to send
+                               USB_CTRL_SET_TIMEOUT, // time in msecs to wait for the message to complete before timing out
+                               GFP_KERNEL);
 
     // Wait
     fsleep(wait);
 
-    kfree(buf);
-    if(len!=size)
+    if (ret)
         dev_warn(&usb_dev->dev, "razer driver: Device data transfer failed.\n");
 
-    return ((len < 0) ? len : ((len != size) ? -EIO : 0));
+    return ret;
 }
 
 /**
@@ -89,7 +81,7 @@ int razer_get_usb_response(struct usb_device *usb_dev, uint report_index, struct
 
     // Send the request to the device.
     // TODO look to see if index needs to be different for the request and the response
-    retval = razer_send_control_msg(usb_dev, request_report, report_index, wait);
+    retval = razer_send_control_msg(usb_dev, request_report, sizeof(*request_report), report_index, wait);
 
     // Now ask for response
     len = usb_control_msg(usb_dev, usb_rcvctrlpipe(usb_dev, 0),
