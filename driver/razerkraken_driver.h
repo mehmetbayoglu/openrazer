@@ -17,6 +17,10 @@
 #define USB_DEVICE_ID_RAZER_BLACKSHARK_V3 0x057A
 #define USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED 0x0576
 #define USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO 0x0577
+/* BlackShark V3 Pro for Xbox — same MXIC protocol, distinct PIDs.
+ * Reported by @iiKovu on PR #2794 along with a Synapse pcap of the dongle. */
+#define USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED 0x0A4E
+#define USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX 0x0A55
 
 #define USB_INTERFACE_PROTOCOL_NONE 0
 

@@ -316,6 +316,8 @@ This will output something similar to this:
 | Razer Kraken Kitty Edition V2                                 |  1532:0560  |
 | Razer BlackShark V3 Pro                                       |  1532:0576  |
 | Razer BlackShark V3 Pro                                       |  1532:0577  |
+| Razer BlackShark V3 Pro for Xbox                              |  1532:0a4e  |
+| Razer BlackShark V3 Pro for Xbox                              |  1532:0a55  |
 | Razer BlackShark V3                                           |  1532:0579  |
 | Razer BlackShark V3                                           |  1532:057A  |
 | Razer Kraken Kitty Edition                                    |  1532:0F19  |

@@ -318,3 +318,30 @@ class RazerBlackSharkV3ProWired(RazerBlackSharkV3Pro):
 
     def _resume_device(self):
         pass
+
+
+class RazerBlackSharkV3ProXbox(RazerBlackSharkV3Pro):
+    """
+    Class for the Razer BlackShark V3 Pro for Xbox (2.4GHz wireless dongle)
+
+    Same MXIC protocol as the PC V3 Pro; the driver only differs in the EQ
+    metadata byte it sends. PIDs reported by @iiKovu on PR #2794.
+    """
+    # Permissive: the Xbox edition's USB product string is unconfirmed, so this
+    # matches both the PC name and an "..._for_Xbox" variant.
+    EVENT_FILE_REGEX = re.compile(r'.*Razer_Inc_BlackShark_V3_Pro.*-event-if05')
+
+    USB_PID = 0x0A55
+
+
+class RazerBlackSharkV3ProXboxWired(RazerBlackSharkV3ProXbox):
+    """
+    Class for the Razer BlackShark V3 Pro for Xbox (USB-C wired)
+    """
+    USB_PID = 0x0A4E
+
+    def _suspend_device(self):
+        self.suspend_args.clear()
+
+    def _resume_device(self):
+        pass

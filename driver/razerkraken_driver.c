@@ -123,10 +123,11 @@ static union razer_kraken_effect_byte get_kraken_effect_byte(void)
 
 static inline u8 razer_blackshark_dir_byte(u16 pid)
 {
-    /* Wireless dongles (V3 0x057A, V3 Pro 0x0577) use 0x80;
-     * wired transports (V3 0x0579, V3 Pro 0x0576) use 0x00. */
+    /* Wireless dongles (V3 0x057A, V3 Pro 0x0577, V3 Pro Xbox 0x0A55) use 0x80;
+     * wired transports (V3 0x0579, V3 Pro 0x0576, V3 Pro Xbox 0x0A4E) use 0x00. */
     return (pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3 ||
-            pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO) ? 0x80 : 0x00;
+            pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
+            pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX) ? 0x80 : 0x00;
 }
 
 /* Back-compat alias kept until callers are migrated. */
@@ -480,6 +481,27 @@ static const u8 bs_v3pro_eq_commit[5][12] = {
  *   4. APPLY        cls=0xe1 cmd=0x01 args=[0x02, 0x00]
  *   5. COMMIT       cls=0xeb cmd=0x0b args=[idx, ...]
  */
+static inline bool razer_blackshark_is_v3pro_xbox(u16 pid)
+{
+    return pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX ||
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED;
+}
+
+/*
+ * Byte [3] of the 0xe0 metadata payload. The PC captures bs_v3pro_eq_meta[] was
+ * built from only ever show 0x00 here. @iiKovu's Xbox-edition Synapse capture
+ * (PR #2794) has 0x01 on every preset switch after the initial slot upload, and
+ * the headset's own unsolicited 0x60 push frames report 0x01 too. Presets
+ * applied cleanly on that unit but were inaudible, which is consistent with
+ * this bit gating whether the stored curve reaches the audio path.
+ *
+ * UNVERIFIED on hardware — this is the one field where our frames and the Xbox
+ * firmware's own reported state disagree, so it is the first thing to try. Kept
+ * Xbox-only so PC units keep sending the byte sequence they are known to work
+ * with. Drop this if it turns out to make no audible difference.
+ */
+#define BLACKSHARK_V3_PRO_EQ_META_ACTIVE_OFF 3
+
 static int razer_blackshark_v3pro_apply_eq(struct razer_kraken_device *device, u8 preset)
 {
     u8 cmdbuf[RAZER_BLACKSHARK_REPORT_LEN];
@@ -503,6 +525,38 @@ static int razer_blackshark_v3pro_apply_eq(struct razer_kraken_device *device, u
         meta[0] = preset;
         memcpy(commit, bs_v3pro_eq_commit[0], sizeof(commit));
         commit[0] = preset;
+    }
+
+    if (razer_blackshark_is_v3pro_xbox(device->usb_pid))
+        meta[BLACKSHARK_V3_PRO_EQ_META_ACTIVE_OFF] = 0x01;
+
+    /*
+     * Xbox edition only: re-assert the audio mode (0x9e) before the EQ chain.
+     *
+     * Synapse sends 0x9e once at the head of the session, ahead of any EQ
+     * traffic (@iiKovu's capture, t=7.179s), and this driver otherwise only
+     * touches 0x9e from the thx_spatial_audio attribute. #2316 describes this
+     * register as the EQ engine master switch gating whether a stored curve
+     * reaches the audio path at all; @FalconHeavy57 measured it as inert on the
+     * V2 Pro, @AlexandreFournier measured it as genuinely gating on the
+     * HyperSpeed. If the Xbox firmware behaves like the latter, an unasserted
+     * gate is exactly the reported symptom: every frame ACKs, the curve stores,
+     * nothing is audible.
+     *
+     * Re-assert the mode the device is already in rather than forcing THX on —
+     * this must not change what the user is listening to. If the cache is cold
+     * (-1, no read or write since probe) skip it entirely rather than guess a
+     * mode. ALSO UNVERIFIED: if EQ works with this and meta[3] reverted, the
+     * gate theory is right and the meta change should be dropped.
+     */
+    if (razer_blackshark_is_v3pro_xbox(device->usb_pid) &&
+        device->cached_v3pro_thx >= 0) {
+        u8 mode[2] = { (u8)device->cached_v3pro_thx, 0x00 };
+
+        razer_blackshark_v3pro_build(cmdbuf, BLACKSHARK_V3_PRO_THX_CLASS,
+                                     BLACKSHARK_V3_PRO_THX_ID, mode, sizeof(mode));
+        ret = razer_blackshark_send_cmd(device, cmdbuf);
+        if (ret < 0 && ret != -ETIMEDOUT) return ret;
     }
 
     razer_blackshark_v3pro_build(cmdbuf, BLACKSHARK_V3_PRO_EQ_STATE_CLASS,
@@ -683,6 +737,14 @@ static ssize_t razer_attr_read_device_type(struct device *dev, struct device_att
 
     case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO:
         device_type = "Razer BlackShark V3 Pro (Wireless)";
+        break;
+
+    case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED:
+        device_type = "Razer BlackShark V3 Pro for Xbox (Wired)";
+        break;
+
+    case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX:
+        device_type = "Razer BlackShark V3 Pro for Xbox (Wireless)";
         break;
 
     default:
@@ -1033,7 +1095,8 @@ static ssize_t razer_attr_read_device_serial(struct device *dev, struct device_a
     struct razer_kraken_request_report report = get_kraken_request_report(0x04, 0x20, 0x16, 0x7f00);
 
     if (device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
-        device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED) {
+        device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED ||
+        razer_blackshark_is_v3pro_xbox(device->usb_pid)) {
         /* V3 Pro serial query path is not yet decoded — return a placeholder. */
         if (device->serial[0] == '\0')
             strncpy(device->serial, "BS_V3PRO_000000", sizeof(device->serial) - 1);
@@ -1106,7 +1169,8 @@ static ssize_t razer_attr_read_firmware_version(struct device *dev, struct devic
     if (device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3 ||
         device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_WIRED ||
         device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
-        device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED) {
+        device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED ||
+        razer_blackshark_is_v3pro_xbox(device->usb_pid)) {
         return sprintf(buf, "v1.0\n");
     }
 
@@ -1606,7 +1670,8 @@ static int razer_blackshark_v3_battery_query(struct razer_kraken_device *device)
 {
     u8 cmdbuf[RAZER_BLACKSHARK_REPORT_LEN];
     bool is_v3_pro = (device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
-                      device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED);
+                      device->usb_pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED ||
+                      razer_blackshark_is_v3pro_xbox(device->usb_pid));
 
     /* V3 Pro firmware needs cls=0x21 with args=[0x00] (data_size=5).
      * V3 wireless firmware needs cls=0x21 with NO args (data_size=4) —
@@ -2121,6 +2186,8 @@ static void razer_kraken_init(struct razer_kraken_device *dev, struct usb_interf
     case USB_DEVICE_ID_RAZER_BLACKSHARK_V3:
     case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED:
     case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO:
+    case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED:
+    case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX:
         // No Chroma RGB — no LED memory addresses required
         break;
     }
@@ -2134,7 +2201,9 @@ static inline bool razer_blackshark_is_v3(u16 pid)
     return pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3 ||
            pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_WIRED ||
            pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
-           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED;
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED ||
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX ||
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED;
 }
 
 /* Only the V3 Pro gets the private ep 0x84 URB, the RF_WAKE keep-alive and the
@@ -2147,7 +2216,9 @@ static inline bool razer_blackshark_is_v3(u16 pid)
 static inline bool razer_blackshark_is_v3pro(u16 pid)
 {
     return pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO ||
-           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED;
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED ||
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX ||
+           pid == USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED;
 }
 
 /*
@@ -2452,6 +2523,8 @@ static int razer_kraken_probe(struct hid_device *hdev, const struct hid_device_i
             break;
         case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED:
         case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO:
+        case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED:
+        case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX:
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_charge_level);
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_charge_status);
             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_v3pro_sidetone);
@@ -2600,6 +2673,8 @@ static void razer_kraken_disconnect(struct hid_device *hdev)
             break;
         case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED:
         case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO:
+        case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED:
+        case USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX:
             device_remove_file(&hdev->dev, &dev_attr_charge_level);
             device_remove_file(&hdev->dev, &dev_attr_charge_status);
             device_remove_file(&hdev->dev, &dev_attr_v3pro_sidetone);
@@ -2680,6 +2755,8 @@ static const struct hid_device_id razer_devices[] = {
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_BLACKSHARK_V3) },
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_WIRED) },
     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO) },
+    { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX_WIRED) },
+    { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_BLACKSHARK_V3_PRO_XBOX) },
     { 0 }
 };
 
