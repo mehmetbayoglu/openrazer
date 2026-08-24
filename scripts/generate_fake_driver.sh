@@ -132,6 +132,7 @@ declare -A files_metadata=(
     ["mic_eq"]="w;"
     ["mic_eq_preset"]="w;"
     ["mic_mute"]="r;0"
+    ["indicator_led"]="rw;0"
     ["eq_slot"]="rw;-1 0 0 0 0 0 0 0 0 0 0"
     ["mic_volume"]="rw;100"
     ["sidetone"]="w;"
