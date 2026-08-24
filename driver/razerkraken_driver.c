@@ -12,6 +12,7 @@
 #include <linux/random.h>
 #include <linux/completion.h>
 #include <linux/power_supply.h>
+#include <linux/string.h>   /* strscpy (kernel 7.2 dropped strncpy) */
 
 #include "razerkraken_driver.h"
 #include "razercommon.h"
@@ -1100,7 +1101,7 @@ static ssize_t razer_attr_read_device_serial(struct device *dev, struct device_a
                 memcpy(device->serial, &device->data[13], slen);
                 device->serial[slen] = '\0';
             } else {
-                strncpy(device->serial, "BS000000000000", sizeof(device->serial) - 1);
+                strscpy(device->serial, "BS000000000000", sizeof(device->serial));
             }
             mutex_unlock(&device->lock);
         }
