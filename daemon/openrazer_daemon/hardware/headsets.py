@@ -259,6 +259,7 @@ class RazerBlackSharkV3(__RazerDevice):
                'get_game_chat_balance', 'set_game_chat_balance',
                'get_in_call_audio_mix', 'set_in_call_audio_mix',
                'get_audio_prompts', 'set_audio_prompts',
+               'get_indicator_led', 'set_indicator_led',
                'get_battery', 'is_charging']
 
     DEVICE_IMAGE = "https://assets2.razerzone.com/images/pnx.assets/blackshark-v3-500x500.png"
@@ -275,6 +276,10 @@ class RazerBlackSharkV3Wired(RazerBlackSharkV3):
     Class for the Razer BlackShark V3 (wired USB)
     """
     USB_PID = 0x0579
+    # No indicator LED on the wired variant — the driver only creates the attr
+    # on the dongle, so drop the DBus methods that would open a missing sysfs
+    # file.
+    METHODS = [m for m in RazerBlackSharkV3.METHODS if m not in ('get_indicator_led', 'set_indicator_led')]
 
 
 class RazerBlackSharkV3Pro(__RazerDevice):
@@ -301,6 +306,7 @@ class RazerBlackSharkV3Pro(__RazerDevice):
                'get_in_call_audio_mix', 'set_in_call_audio_mix',
                'get_audio_prompts', 'set_audio_prompts',
                'get_anc', 'set_anc',
+               'get_indicator_led', 'set_indicator_led',
                'get_battery', 'is_charging']
 
     DEVICE_IMAGE = "https://assets2.razerzone.com/images/pnx.assets/blackshark-v3-pro-500x500.png"
@@ -311,6 +317,8 @@ class RazerBlackSharkV3ProWired(RazerBlackSharkV3Pro):
     Class for the Razer BlackShark V3 Pro (USB-C wired)
     """
     USB_PID = 0x0576
+    # No indicator LED when wired (dongle-only attr) — drop the DBus methods.
+    METHODS = [m for m in RazerBlackSharkV3Pro.METHODS if m not in ('get_indicator_led', 'set_indicator_led')]
 
     def _suspend_device(self):
         self.suspend_args.clear()

@@ -213,6 +213,23 @@ def set_mic_eq_preset(self, preset_idx):
         f.write(str(max(0, min(3, int(preset_idx)))))
 
 
+# ── dongle indicator LED (wireless dongle only — no LED when wired) ───────────
+@endpoint('razer.device.misc', 'getIndicatorLED', out_sig='i')
+def get_indicator_led(self):
+    self.logger.debug("DBus call get_indicator_led")
+    p = self.get_driver_path('indicator_led')
+    with open(p, 'r') as f:
+        return int(f.read().strip())
+
+
+@endpoint('razer.device.misc', 'setIndicatorLED', in_sig='i')
+def set_indicator_led(self, mode):
+    self.logger.debug("DBus call set_indicator_led")
+    p = self.get_driver_path('indicator_led')
+    with open(p, 'w') as f:
+        f.write(str(max(0, min(2, int(mode)))))
+
+
 # ── audio function button (V3 only — V3 Pro lacks this hw button) ────────────
 @endpoint('razer.device.audio.headphone', 'getAudioFunctionButton', out_sig='i')
 def get_audio_function_button(self):
