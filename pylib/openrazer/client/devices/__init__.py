@@ -89,6 +89,7 @@ class RazerDevice(object):
             'audio_in_call_audio_mix': self._has_feature('razer.device.audio.headphone', ('getInCallAudioMix', 'setInCallAudioMix')),
             'audio_prompts': self._has_feature('razer.device.audio.headphone', ('getAudioPrompts', 'setAudioPrompts')),
             'audio_anc': self._has_feature('razer.device.audio.effects', ('getAnc', 'setAnc')),
+            'indicator_led': self._has_feature('razer.device.misc', ('getIndicatorLED', 'setIndicatorLED')),
             'set_thx_spatial_audio': self._has_feature('razer.device.audio.effects', 'setThxSpatialAudio'),
             'set_ultra_low_latency': self._has_feature('razer.device.audio.headphone', 'setUltraLowLatency'),
             'set_sidetone': self._has_feature('razer.device.audio.headphone', 'setSidetone'),
@@ -643,6 +644,28 @@ class RazerDevice(object):
         if not self.has('audio_mic_eq_preset'):
             raise NotImplementedError()
         self._dbus_interfaces['audio_equalizer'].setMicEQPreset(int(preset))
+
+    def get_indicator_led(self) -> int:
+        """
+        Get the wireless dongle's indicator LED mode.
+
+        :return: 0=ConnectionStatus, 1=BatteryStatus, 2=BatteryWarningOnly
+        :rtype: int
+        """
+        if not self.has('indicator_led'):
+            raise NotImplementedError()
+        return int(self._dbus_interfaces['device'].getIndicatorLED())
+
+    def set_indicator_led(self, mode: int) -> None:
+        """
+        Set the wireless dongle's indicator LED mode.
+
+        :param mode: 0=ConnectionStatus, 1=BatteryStatus, 2=BatteryWarningOnly
+        :type mode: int
+        """
+        if not self.has('indicator_led'):
+            raise NotImplementedError()
+        self._dbus_interfaces['device'].setIndicatorLED(int(mode))
 
     def get_audio_function_button(self) -> int:
         if not self.has('audio_function_button'):
